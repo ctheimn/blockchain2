@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rock, Paper, Scissors</title>
+    <style>
+        body {
+            background-color: #3498db; /* Change background color to a shade of blue */
+            font-family: Arial, sans-serif;
+            text-align: center;
+            color: white; /* Set text color to white */
+        }
+
+        h1 {
+            font-size: 36px;
+        }
+
+        #accountArea {
+            font-size: 18px;
+        }
+
+        #game-container {
+            background-color: #2980b9; /* Change container background color */
+            padding: 60px;
+            border-radius: 10px;
+            margin-top: 100px;
+        }
+
+        #round-description {
+            font-size: 24px;
+        }
+
+        #result {
+            font-size: 28px;
+            margin-top: 20px;
+        }
+
+        #restart {
+            background-color: #27ae60;
+            color: white;
+            padding: 10px 20px;
+            font-size: 18px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            display: none; /* Initially hidden */
+            margin: 20px auto; /* Center the button horizontally */
+        }
+
+        /* Style for buttons and select */
+        button, select {
+            background-color: #27ae60;
+            color: white;
+            padding: 10px 20px;
+            font-size: 18px;
+            margin: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #219f56;
+        }
+
+        /* Positioning for Metamask and History buttons */
+        #metamask-button {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+        }
+
+        #history-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Rock, Paper, Scissors</h1>
+    <button onclick="connectWallet()" id="metamask-button">Connect Wallet</button>
+    <p id="accountArea"></p>
+
+    <button id="history-button">View History</button>
+    <div id="game-container">
+        <div id="round-description">Choose your move:</div>
+        <label for="choice">Select your move:</label>
+        <select id="choice">
+            <option value="0">Rock</option>
+            <option value="1">Paper</option>
+            <option value="2">Scissors</option>
+        </select>
+
+        <div>
+            <label for="betAmount">Bet Amount (in Ether):</label>
+            <input type="text" id="betAmount" placeholder="Enter your bet amount">
+        </div>
+
+        <div>
+            <button onclick="playGame()">Play</button>
+        </div>
+
+        <div id="result"></div>
+    </div>
+
+    <button id="restart" onclick="resetGame()">Restart</button>
+
+    <script src="https://cdn.ethers.io/lib/ethers-5.4.umd.min.js" type="application/javascript"></script>
+    <script>
+        let provider, signer, gameContract;
+
+        async function connectWallet() {
+            try {
+                if (typeof window.ethereum !== 'undefined') {
+                    await window.ethereum.request({ method: "eth_requestAccounts" });
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    signer = provider.getSigner();
+                    const contractAddress = "0xCC058641D2d106D13EC5B1fC14Bb0d5D4072282B";
+                    const contractABI = [
+                        {
+                            "inputs": [],
+                            "stateMutability": "payable",
+                            "type": "constructor"
+                        },
+                        {
+                            "inputs": [],
+                            "name": "getHistory",
+                            "outputs": [
+                                {
+                                    "components": [
+                                        {
+                                            "internalType": "string",
+                                            "name": "result",
+                                            "type": "string"
+                                        },
+                                        {
+                                            "internalType": "uint8",
+                                            "name": "bet",
+                                            "type": "uint8"
+                                        }
+                                    ],
+                                    "internalType": "struct RPSContract.Game[]",
+                                    "name": "",
+                                    "type": "tuple[]"
+                                }
+                            ],
+                            "stateMutability": "view",
+                            "type": "function"
+                        },
+                        {
+                            "inputs": [],
+                            "name": "owner",
+                            "outputs": [
+                                {
+                                    "internalType": "address",
+                                    "name": "",
+                                    "type": "address"
+                                }
+                            ],
+                            "stateMutability": "view",
+                            "type": "function"
+                        },
+                        {
+                            "inputs": [
+                                {
+                                    "internalType": "string",
+                                    "name": "playerSelection",
+                                    "type": "string"
+                                }
+                            ],
+                            "name": "play",
+                            "outputs": [],
+                            "stateMutability": "payable",
+                            "type": "function"
+                        }
+                    ];
+                    gameContract = new ethers.Contract(contractAddress, contractABI, signer);
+                    document.getElementById("accountArea").innerText = "Connected";
+                }
+            } catch (error) {
+                console.error("Error:", error);
+            }
+        }
+
+        async function playGame() {
+            try {
+                const choice = document.getElementById("choice").value;
+                const betAmount = document.getElementById("betAmount").value;
+
+                const tx = await gameContract.play(choice, {
+                    value: ethers.utils.parseEther(betAmount),
+                    gasLimit: 1000000
+                });
+
+                const receipt = await tx.wait();
+
+                console.log(receipt);
+
+                const parsedLogs = receipt.logs.map(log => {
+                    try {
+                        return gameContract.interface.parseLog(log);
+                    } catch (error) {
+                        return null;
+                    }
+                }).filter(parsedLog => parsedLog !== null);
+
+                for (let parsedLog of parsedLogs) {
+                    if (parsedLog.name === "GameResult") {
+                        document.getElementById("result").innerText = parsedLog.args.result;
+                        document.getElementById("restart").style.display = "block";
+                    }
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                document.getElementById("result").innerText = "An error occurred.";
+            }
+        }
+
+        function resetGame() {
+            document.getElementById("result").innerText = "";
+            document.getElementById("betAmount").value = "";
+            document.getElementById("restart").style.display = "none";
+        }
+    </script>
+</body>
+</html>
